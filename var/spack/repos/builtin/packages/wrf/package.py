@@ -155,6 +155,10 @@ class Wrf(Package):
     variant("chem", default=False, description="Enable WRF-Chem", when="@4:")
     variant("netcdf_classic", default=False, description="Use NetCDF without HDF5 compression")
     variant("adios2", default=False, description="Enable IO support through ADIOS2 library")
+    for compiler in ["%arm", "%clang", "%gcc", "%intel", "%oneapi"]:
+        variant("keep_syms", default=False, when=compiler,
+                description="Keep debugging symbols to aid in profiling"
+                    "/debugging without changing optimization level")
 
     patch("patches/3.9/netcdf_backport.patch", when="@3.9.1.1")
     patch("patches/3.9/tirpc_detect.patch", when="@3.9.1.1")
@@ -427,6 +431,15 @@ class Wrf(Package):
                 "^CFLAGS_LOCAL(.*?)=([^#\n\r]*)(.*)$", r"CFLAGS_LOCAL\1= \2 -fpermissive \3"
             )
             config.filter("^CC_TOOLS(.*?)=([^#\n\r]*)(.*)$", r"CC_TOOLS\1=\2 -fpermissive \3")
+
+        if self.spec.satisfies("+keep_syms"):
+            # happily, all compilers that support this variant accept the
+            # exact same flags
+            flags_to_add = "-g -fno-omit-frame-pointer"
+            vars_to_filter = [ "OMPCPP", "OMP", "OMPCC", "CFLAGS_LOCAL",
+                              "LDFLAGS_LOCAL", "FCOPTIM", "FCNOOPT", "FCDEBUG" ]
+            for var in vars_to_filter:
+                config.filter(rf"^{var}(.*?)=([^#\n\r]*)(.*)$", rf"{var}\1=\2 {flags_to_add} \3")
 
     @run_before("configure")
     def fortran_check(self):
