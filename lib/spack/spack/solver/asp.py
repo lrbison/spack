@@ -4101,6 +4101,11 @@ class SpecBuilder:
             current_spec = spec
             for target, replacement, transitive in splice_triples:
                 if target in current_spec:
+                    tty.debug("Starting:",current_spec)
+                    tty.debug("TARGET/REP/TRANS target:",target)
+                    tty.debug("TARGET/REP/TRANS rep:",replacement)
+                    tty.debug("TARGET/REP/TRANS trans:",transitive)
+                
                     # matches root or non-root
                     # e.g. mvapich2%gcc
 
@@ -4108,6 +4113,8 @@ class SpecBuilder:
                     if not replacement.concrete:
                         replacement.replace_hash()
                     current_spec = current_spec.splice(replacement, transitive)
+                    tty.debug("Finished as:",current_spec)
+
             new_key = NodeArgument(id=key.id, pkg=current_spec.name)
             specs[new_key] = current_spec
 

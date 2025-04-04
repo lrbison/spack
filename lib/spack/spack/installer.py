@@ -238,6 +238,7 @@ def _handle_external_and_upstream(pkg: "spack.package_base.PackageBase", explici
     # For external packages the workflow is simplified, and basically
     # consists in module file generation and registration in the DB.
     if pkg.spec.external:
+        tty.verbose(f"{package_id(pkg.spec)} is external")
         _process_external_package(pkg, explicit)
         _print_installed_pkg(f"{pkg.prefix} (external {package_id(pkg.spec)})")
         return True
@@ -254,6 +255,7 @@ def _handle_external_and_upstream(pkg: "spack.package_base.PackageBase", explici
         # the module from the upstream Spack instance.
         return True
 
+    tty.verbose(f"{package_id(pkg.spec)} is not external or upstream, continue to real install.")
     return False
 
 
@@ -372,6 +374,7 @@ def _install_from_cache(
         pkg, explicit, unsigned=unsigned, timer=t
     )
     if not installed_from_cache:
+        tty.debug("DID NOT INSTALL FROM CACHE")
         return False
     t.stop()
 
@@ -449,11 +452,15 @@ def _process_binary_cache_tarball(
             else ``False``
     """
     with timer.measure("fetch"):
+        tty.debug(f"XXXXXXXXXXXX download_tarball: fetching... {pkg.spec.build_spec}")
+        tty.debug(f"XXXXXXXXXXXX download_tarball: fetch will rewire to... {pkg.spec}")
+
         download_result = binary_distribution.download_tarball(
             pkg.spec.build_spec, unsigned, mirrors_for_spec
         )
 
         if download_result is None:
+            tty.debug(f"XXXXXXXXXXXX _process_binary_cache_tarball: {pkg.name} didn't download.")
             return False
 
     tty.msg(f"Extracting {package_id(pkg.spec)} from binary cache")
@@ -471,6 +478,7 @@ def _process_binary_cache_tarball(
 
         pkg.installed_from_binary_cache = True
         spack.store.STORE.db.add(pkg.spec, explicit=explicit)
+        tty.debug(f"XXXXXXXXXXXX _process_binary_cache_tarball: {pkg.name} DID install.")
         return True
 
 
@@ -1148,11 +1156,13 @@ class BuildTask(Task):
         pkg, pkg_id = self.pkg, self.pkg_id
 
         tty.msg(install_msg(pkg_id, self.pid, install_status))
+        tty.debug(f"XXXXXXXXXX {pkg.name} MARK20")
         self.start = self.start or time.time()
         self.status = BuildStatus.INSTALLING
 
         # Use the binary cache if requested
         if self.use_cache:
+            tty.debug(f"calling _install_from_cache: {_install_from_cache}")
             if _install_from_cache(pkg, self.explicit, unsigned):
                 return ExecuteResult.SUCCESS
             elif self.cache_only:
@@ -1209,6 +1219,7 @@ class RewireTask(Task):
         """
         oldstatus = self.status
         self.status = BuildStatus.INSTALLING
+        tty.debug(f"XXXXXXXXXX {self.pkg.name} RewireTask.execute STARTS")
         tty.msg(install_msg(self.pkg_id, self.pid, install_status))
         self.start = self.start or time.time()
         if not self.pkg.spec.build_spec.installed:
@@ -1217,13 +1228,16 @@ class RewireTask(Task):
                 unsigned = install_args.get("unsigned")
                 _process_binary_cache_tarball(self.pkg, explicit=self.explicit, unsigned=unsigned)
                 _print_installed_pkg(self.pkg.prefix)
+                tty.debug(f"XXXXXXXXXX {self.pkg.name} RewireTask.execute returns SUCCESS after _process_binary_cache_tarball.  Installed? {self.pkg.spec.build_spec.installed}")
                 return ExecuteResult.SUCCESS
             except BaseException as e:
                 tty.error(f"Failed to rewire {self.pkg.spec} from binary. {e}")
                 self.status = oldstatus
+                tty.debug(f"XXXXXXXXXX {self.pkg.name} MARK32")
                 return ExecuteResult.MISSING_BUILD_SPEC
         spack.rewiring.rewire_node(self.pkg.spec, self.explicit)
         _print_installed_pkg(self.pkg.prefix)
+        tty.debug(f"XXXXXXXXXX {self.pkg.name} RewireTask.execute returns SUCCESS after spack.rewiring.rewire_node.  Installed? { self.pkg.spec.build_spec.installed}")
         return ExecuteResult.SUCCESS
 
 
@@ -1756,10 +1770,14 @@ class PackageInstaller:
             task: the installation task for a package
             install_status: the installation status for the package"""
         rc = task.execute(install_status)
+        tty.debug(f"    _install_task rc: {install_status} => {rc}")
         if rc == ExecuteResult.MISSING_BUILD_SPEC:
+            tty.debug(f"    _install_task: requeue_with_build_spec")
             self._requeue_with_build_spec_tasks(task)
         else:  # if rc == ExecuteResult.SUCCESS or rc == ExecuteResult.FAILED
             self._update_installed(task)
+            tty.debug(f"    _install_task: update_installed")
+
 
     def _next_is_pri0(self) -> bool:
         """
@@ -2105,6 +2123,7 @@ class PackageInstaller:
 
             term_status.clear()
 
+
             # Take a timestamp with the overwrite argument to allow checking
             # whether another process has already overridden the package.
             if task.request.overwrite and task.explicit:
@@ -2116,6 +2135,7 @@ class PackageInstaller:
 
             # Flag an already installed package
             if pkg_id in self.installed:
+                tty.debug(f"{pkg.name} already installed")
                 # Downgrade to a read lock to preclude other processes from
                 # uninstalling the package until we're done installing its
                 # dependents.
@@ -2149,20 +2169,27 @@ class PackageInstaller:
                 lock.release_read()
                 self._requeue_task(task, install_status)
                 continue
+            
+            tty.debug(f"XXXXXXXXXXXXXXXX {pkg.name} MARK5")
 
             # Proceed with the installation since we have an exclusive write
             # lock on the package.
             install_status.set_term_title(f"Installing {pkg.name}")
             try:
                 action = self._install_action(task)
+                tty.debug(f"XXXXXXXXXXXXXXXX {pkg.name} MARK6")
+
 
                 if action == InstallAction.INSTALL:
                     self._install_task(task, install_status)
+                    tty.debug(f"XXXXXXXXXXXXXXXX {pkg.name} MARK7")
                 elif action == InstallAction.OVERWRITE:
+                    tty.debug(f"XXXXXXXXXXXXXXXX {pkg.name} MARK8")
                     # spack.store.STORE.db is not really a Database object, but a small
                     # wrapper -- silence mypy
                     OverwriteInstall(self, spack.store.STORE.db, task, install_status).install()  # type: ignore[arg-type] # noqa: E501
 
+                tty.debug(f"XXXXXXXXXXXXXXXX {pkg.name} MARK9")
                 # If we installed then we should keep the prefix
                 stop_before_phase = getattr(pkg, "stop_before_phase", None)
                 last_phase = getattr(pkg, "last_phase", None)
@@ -2224,7 +2251,9 @@ class PackageInstaller:
 
             # Perform basic task cleanup for the installed spec to
             # include downgrading the write to a read lock
+            tty.debug(f"XXXXXXXXXXXXXXXX {pkg.name} MARK10")
             if pkg.spec.installed:
+                tty.debug(f"XXXXXXXXXXXXXXXX {pkg.name} MARK11")
                 self._cleanup_task(pkg)
 
         # Cleanup, which includes releasing all of the read locks

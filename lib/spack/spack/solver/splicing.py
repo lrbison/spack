@@ -40,6 +40,8 @@ def _resolve_collected_splices(
             return 1
         else:
             return 0
+    print("SPECS: ",specs)
+    print("SPLICES: ",splices)
 
     splice_order = sorted(specs, key=cmp_to_key(splice_cmp))
     reverse_topo_order = reversed(
