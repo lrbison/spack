@@ -83,10 +83,9 @@ spack:
     openmpi:
       variants: ~atomics ~cuda ~cxx ~cxx_exceptions ~internal-hwloc ~java +legacylaunchers ~lustre ~memchecker +pmi +romio ~singularity +vt +wrapper-rpath fabrics=ofi schedulers=slurm
       require: '@4:'
-    # Palace does not build correctly with armpl until https://github.com/awslabs/palace/pull/207 is merged into a version.
-    # palace:
-    #   require:
-    #     - one_of: ["palace cxxflags=\"-include cstdint\" ^fmt@9.1.0"]
+    palace:
+      require:
+      - one_of: ["palace cxxflags=\"-include cstdint\" ^fmt@9.1.0"]
     pmix:
       require: "pmix@3:"
     quantum-espresso:
@@ -97,6 +96,8 @@ spack:
       externals:
       - prefix: /opt/slurm
         spec: slurm@22.05.8 +pmix
+    wrf:
+      variants: build_type=dm+sm, ~adios2, ~pnetcdf
     all:
       compiler: [gcc, arm, nvhpc, clang]
       providers:
